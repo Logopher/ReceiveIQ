@@ -23,7 +23,15 @@ Originally just stock-level updates and the audit log. BOM recalculation was bol
 
 The BOM recalculation uses *committed* stock levels (i.e., excluding stock already allocated to in-progress kits) when checking whether parent assemblies are now buildable, but uses *raw* stock levels when emitting reorder alerts. This means you can receive a shipment, see "kit X is now buildable" on the dashboard, *and* simultaneously get a reorder alert for the underlying raw material — because the alert thinks the new stock isn't allocated yet, while the BOM thinks it is.
 
-The dock workers have learned to ignore reorder alerts for any item that just appeared in a "now buildable" notification within the last fifteen minutes. Tony's purchasing counterpart at Hartline knows about this and has a saved search in her email to filter accordingly. Any rewrite must preserve the existing alert behavior — finance reconciles purchase orders against these alerts and a change in alert volume would create discrepancies in their monthly close that take days to resolve.
+The dock workers have learned to ignore reorder alerts for any item that just appeared in a "now buildable" notification within the last fifteen minutes. Tony's purchasing counterpart at Hartline knows about this and has a saved search in her email to filter accordingly.
+
+**Why Finance's reorder alerts must use raw stock, not available stock.**
+
+`committed_quantity` represents stock soft-allocated to open production orders — physically in the warehouse but already spoken for, with a lag of days or weeks before the allocation is actually consumed. If the reorder alert gated on `availableQuantity()` (stock minus committed), the alert would become a function of the production scheduling system's current state, which finance doesn't control and doesn't trust. Today `availableQuantity()` is 45; tomorrow a planner reshuffles three orders and it's 12 — the reorder window closes, no PO is raised, and the lead time is missed.
+
+Beyond that, Hartline has blanket POs with several key suppliers structured around expected alert cadence. Each alert is supposed to generate a requisition; requisitions aggregate monthly against the blanket. If alerts are suppressed because available quantity looks fine, the blanket underfills and the vendor can renegotiate terms at renewal. The CFO treats `stock_quantity < reorder_point` as a pure inventory signal, completely decoupled from production allocation state. The BOM buildability result and the reorder alert are separate ledgers that happen to fire in the same request.
+
+This asymmetry is intentional and load-bearing. Any rewrite must preserve it.
 
 **The hardcoded edge case nobody documented.**
 
@@ -41,6 +49,16 @@ Bertolini is Hartline's largest supplier by volume. The "kit math is wrong for t
 **The pending change nobody wants to touch.**
 
 Hartline's CFO wants to add a "shrinkage allowance" — a configurable per-supplier percentage that gets deducted from received quantities to account for damaged/spoiled goods caught at the dock. The dock workers already discount the quantities manually before scanning, but the CFO wants the system to do it so the manual adjustments stop varying by worker. Nobody on the engineering side wants to touch `ReceiveShipmentController@store` to add it.
+
+---
+
+**The typed read model extraction (done).**
+
+`app/ReadModels/ProcurementSnapshot` and `app/ReadModels/ProductionSnapshot` are value objects that formalize the two views of a material's inventory position. `ProcurementSnapshot::afterReceiving()` carries physical stock and the previous stock level; its `crossedReorderThreshold()` method encapsulates the full reorder condition. `ProductionSnapshot::from()` carries available quantity only; its `canFulfill()` method is the only way to check buildability.
+
+`availableQuantity()` was removed from `RawMaterial`. Any code that tries to call it on the model gets a hard failure. The controller and both BOM code paths (inline legacy and `BomRecalculationService`) now go through the appropriate snapshot — which means the wrong field is structurally inaccessible, not just conventionally discouraged. A future session can't "fix" the asymmetry by accident.
+
+The reorder alert still dispatches `ReorderAlertTriggered` with the full `RawMaterial` model because the event listener infrastructure is built around it. The snapshot is used only for the logic that decides *whether* to dispatch.
 
 ---
 
