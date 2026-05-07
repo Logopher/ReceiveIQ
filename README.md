@@ -9,7 +9,7 @@ See [`legend.md`](legend.md) for the full fictional history: the company, the ap
 - **Characterization testing** — locking in existing behavior (including intentional bugs) before refactoring, so regressions are caught rather than silently introduced
 - **Strangler Fig extraction** — `BomRecalculationService` extracted from the controller behind a feature flag, with a parity test verifying identical output from both code paths
 - **Typed read models** — `ProcurementSnapshot` and `ProductionSnapshot` enforce the procurement/production inventory asymmetry structurally; the wrong field is inaccessible, not just discouraged
-- **Incremental delivery** — each commit is a single logical unit; the git log is the implementation narrative
+- **Incremental delivery** — each commit is a single logical unit; the git log is the implementation narrative. The Strangler Fig work begins at [`5a5976a`](https://github.com/Logopher/ReceiveIQ/commit/5a5976ac113d1d3f5adb20ad74b460e636c8f77f).
 
 ## Stack
 
