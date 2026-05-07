@@ -20,6 +20,13 @@ class SupplierFactory extends Factory
         ];
     }
 
+    public function withShrinkage(float $percentage): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'shrinkage_allowance_percentage' => $percentage,
+        ]);
+    }
+
     public function bertolini(): static
     {
         return $this->state(fn (array $attributes) => [

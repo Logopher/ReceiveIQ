@@ -23,6 +23,20 @@ class Supplier extends Model
         ];
     }
 
+    /**
+     * Deduct the contractual shrinkage allowance from a scanned quantity.
+     * Null and zero percentage are both treated as no deduction.
+     * Result is floored — physical goods cannot yield fractional units.
+     */
+    public function applyShrinkage(int $quantity): int
+    {
+        if (! $this->shrinkage_allowance_percentage) {
+            return $quantity;
+        }
+
+        return (int) floor($quantity * (1 - $this->shrinkage_allowance_percentage / 100));
+    }
+
     public function shipments(): HasMany
     {
         return $this->hasMany(Shipment::class);
