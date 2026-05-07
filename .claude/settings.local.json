@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__laravel-boost__application-info",
-      "mcp__laravel-boost__database-schema"
+      "mcp__laravel-boost__database-schema",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   },
   "enabledMcpjsonServers": [
