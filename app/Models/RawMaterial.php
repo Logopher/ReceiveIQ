@@ -14,11 +14,6 @@ class RawMaterial extends Model
     /** @use HasFactory<RawMaterialFactory> */
     use HasFactory;
 
-    public function availableQuantity(): int
-    {
-        return $this->stock_quantity - $this->committed_quantity;
-    }
-
     public function bomComponents(): HasMany
     {
         return $this->hasMany(BomComponent::class);

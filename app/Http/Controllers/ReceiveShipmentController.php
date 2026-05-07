@@ -9,6 +9,8 @@ use App\Models\AuditLog;
 use App\Models\RawMaterial;
 use App\Models\Shipment;
 use App\Notifications\ExpediteShipmentReceived;
+use App\ReadModels\ProcurementSnapshot;
+use App\ReadModels\ProductionSnapshot;
 use App\Services\BomRecalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Notification;
@@ -33,7 +35,7 @@ class ReceiveShipmentController extends Controller
 
             $updatedMaterials->push([
                 'material' => $material,
-                'previous_stock_quantity' => $previousStockQuantity,
+                'snapshot' => ProcurementSnapshot::afterReceiving($material, $previousStockQuantity),
             ]);
         }
 
@@ -57,9 +59,7 @@ class ReceiveShipmentController extends Controller
 
                 foreach ($affectedAssemblies as $assembly) {
                     $isBuildable = $assembly->bomComponents->every(function ($component) {
-                        // Uses available quantity (stock - committed), not raw stock.
-                        // This is intentionally asymmetric with the reorder alert below — see known bug.
-                        return $component->rawMaterial->availableQuantity() >= $component->required_quantity;
+                        return ProductionSnapshot::from($component->rawMaterial)->canFulfill($component->required_quantity);
                     });
 
                     if ($isBuildable && ! $assembly->is_buildable) {
@@ -82,12 +82,8 @@ class ReceiveShipmentController extends Controller
         foreach ($updatedMaterials as $entry) {
             /** @var RawMaterial $material */
             $material = $entry['material'];
-            $previousStockQuantity = $entry['previous_stock_quantity'];
 
-            if (
-                $material->stock_quantity >= $material->reorder_up_to_quantity
-                && $previousStockQuantity < $material->reorder_point
-            ) {
+            if ($entry['snapshot']->crossedReorderThreshold()) {
                 event(new ReorderAlertTriggered($material));
                 $reorderAlertCount++;
             }

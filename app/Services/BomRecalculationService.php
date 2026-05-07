@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Assembly;
 use App\Models\RawMaterial;
 use App\Models\Shipment;
+use App\ReadModels\ProductionSnapshot;
 use Illuminate\Support\Collection;
 
 class BomRecalculationService
@@ -37,7 +38,7 @@ class BomRecalculationService
 
         foreach ($affectedAssemblies as $assembly) {
             $isBuildable = $assembly->bomComponents->every(function ($component) {
-                return $component->rawMaterial->availableQuantity() >= $component->required_quantity;
+                return ProductionSnapshot::from($component->rawMaterial)->canFulfill($component->required_quantity);
             });
 
             if ($isBuildable && ! $assembly->is_buildable) {
