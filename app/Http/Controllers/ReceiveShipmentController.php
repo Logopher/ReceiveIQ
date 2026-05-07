@@ -25,12 +25,16 @@ class ReceiveShipmentController extends Controller
 
         // Step 3: Update stock levels, capturing before-quantities for reorder logic
         $updatedMaterials = collect();
+        $totalDeductedQuantity = 0;
 
         foreach ($shipment->lineItems()->with('rawMaterial')->get() as $lineItem) {
             $material = $lineItem->rawMaterial;
             $previousStockQuantity = $material->stock_quantity;
 
-            $material->increment('stock_quantity', $lineItem->actual_quantity);
+            $adjustedQuantity = $shipment->supplier->applyShrinkage($lineItem->actual_quantity);
+            $totalDeductedQuantity += $lineItem->actual_quantity - $adjustedQuantity;
+
+            $material->increment('stock_quantity', $adjustedQuantity);
             $material->refresh();
 
             $updatedMaterials->push([
@@ -98,6 +102,8 @@ class ReceiveShipmentController extends Controller
                 'supplier_id' => $shipment->supplier_id,
                 'newly_buildable_assembly_ids' => $newlyBuildableAssemblies->pluck('id')->all(),
                 'reorder_alert_count' => $reorderAlertCount,
+                'shrinkage_allowance_pct' => $shipment->supplier->shrinkage_allowance_percentage,
+                'total_deducted_quantity' => $totalDeductedQuantity,
             ],
             'created_at' => now(),
         ]);

@@ -272,6 +272,65 @@ it('produces identical BOM results whether using inline or extracted service log
 ]);
 
 // ---------------------------------------------------------------------------
+// Test 8: Shrinkage allowance is applied to stock write
+// ---------------------------------------------------------------------------
+it('deducts the supplier shrinkage allowance from stock when receiving a shipment', function () {
+    // 10% shrinkage: 100 scanned → floor(90) = 90 written to stock
+    $supplier = Supplier::factory()->withShrinkage(10.0)->create();
+
+    $material = RawMaterial::factory()->create([
+        'stock_quantity' => 0,
+        'reorder_point' => 1000,
+        'reorder_up_to_quantity' => 2000,
+    ]);
+
+    $shipment = Shipment::factory()->onTime()->create(['supplier_id' => $supplier->id]);
+    ShipmentLineItem::factory()->create([
+        'shipment_id' => $shipment->id,
+        'raw_material_id' => $material->id,
+        'actual_quantity' => 100,
+    ]);
+
+    $this->postJson("/api/shipments/{$shipment->id}/receive")->assertOk();
+
+    expect($material->fresh()->stock_quantity)->toBe(90);
+
+    // actual_quantity on the line item is the dock worker's scanned count — unchanged
+    expect($material->shipmentLineItems()->first()->actual_quantity)->toBe(100);
+
+    $log = AuditLog::where('event_type', 'shipment_received')->first();
+    expect($log->context['shrinkage_allowance_pct'])->toBe('10.00');
+    expect($log->context['total_deducted_quantity'])->toBe(10);
+});
+
+// ---------------------------------------------------------------------------
+// Test 9: No shrinkage when supplier allowance is null
+// ---------------------------------------------------------------------------
+it('writes the full scanned quantity to stock when the supplier has no shrinkage allowance', function () {
+    $supplier = Supplier::factory()->create(); // shrinkage_allowance_percentage defaults to null
+
+    $material = RawMaterial::factory()->create([
+        'stock_quantity' => 0,
+        'reorder_point' => 1000,
+        'reorder_up_to_quantity' => 2000,
+    ]);
+
+    $shipment = Shipment::factory()->onTime()->create(['supplier_id' => $supplier->id]);
+    ShipmentLineItem::factory()->create([
+        'shipment_id' => $shipment->id,
+        'raw_material_id' => $material->id,
+        'actual_quantity' => 100,
+    ]);
+
+    $this->postJson("/api/shipments/{$shipment->id}/receive")->assertOk();
+
+    expect($material->fresh()->stock_quantity)->toBe(100);
+
+    $log = AuditLog::where('event_type', 'shipment_received')->first();
+    expect($log->context['total_deducted_quantity'])->toBe(0);
+});
+
+// ---------------------------------------------------------------------------
 // Test 7: Already-received shipment is rejected
 // ---------------------------------------------------------------------------
 it('returns 422 when the shipment has already been received', function () {
